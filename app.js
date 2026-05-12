@@ -1,9 +1,12 @@
 // ============================================================
-// Global state
+// 定数
 // ============================================================
 const TOTAL_TARGETS = 20;
-const FREE_MS = 30000;
+const FREE_DURATION_MS = 30000;
 
+// ============================================================
+// 状態
+// ============================================================
 let participantId = '';
 let sessionId = '';
 let allData = [];
@@ -14,7 +17,7 @@ let targetsDone = 0;
 let currentTargetEl = null;
 
 // ============================================================
-// Utilities
+// ユーティリティ
 // ============================================================
 function showPage(id) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -22,7 +25,7 @@ function showPage(id) {
     window.scrollTo(0, 0);
 }
 
-// Clock
+// ページ上部の時計
 (function tickClock() {
     const el = document.getElementById('clock');
     if (el) el.textContent = new Date().toLocaleTimeString('ja-JP');
@@ -30,20 +33,24 @@ function showPage(id) {
 })();
 
 // ============================================================
-// PAGE 1 → Start
+// ページ1: 開始
 // ============================================================
 function startExperiment() {
-    const raw = document.getElementById('pid-input').value.trim();
     const input = document.getElementById('pid-input');
+    const raw = input.value.trim();
+
     if (!raw) {
         input.classList.add('error');
         input.focus();
         return;
     }
+
     participantId = raw;
     sessionId = Date.now().toString(36).toUpperCase();
-    document.getElementById('pid-label-1').textContent = `ID: ${participantId}`;
-    document.getElementById('pid-label-2').textContent = `ID: ${participantId}`;
+
+    document.getElementById('pid-label-1').textContent = 'ID: ' + participantId;
+    document.getElementById('pid-label-2').textContent = 'ID: ' + participantId;
+
     showPage('page-target-intro');
 }
 
@@ -55,10 +62,10 @@ document.getElementById('pid-input').addEventListener('keydown', function (e) {
 });
 
 // ============================================================
-// PAGE 3: Target Task
+// ページ3: 的当てタスク
 // ============================================================
-let targetMoveHandler = null;
 let tCanvas, tCtx, trailPts = [];
+let targetMoveHandler = null;
 
 function startTargetTask() {
     showPage('page-target');
@@ -66,7 +73,6 @@ function startTargetTask() {
     targetsDone = 0;
     trailPts = [];
 
-    // Setup canvas
     const area = document.getElementById('target-area');
     tCanvas = document.getElementById('target-canvas');
     tCanvas.width = area.offsetWidth;
@@ -75,71 +81,83 @@ function startTargetTask() {
 
     taskStart = performance.now();
 
-    // Mouse tracking
     targetMoveHandler = (e) => {
         const rect = area.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const x = Math.round(e.clientX - rect.left);
+        const y = Math.round(e.clientY - rect.top);
         const t = Math.round(performance.now() - taskStart);
-        targetData.push({ task: 'target', event: 'move', x: Math.round(x), y: Math.round(y), t, tid: targetsDone, tx: '', ty: '' });
+
+        targetData.push({
+            task: 'target', event: 'move',
+            x, y, t,
+            tid: targetsDone, tx: '', ty: ''
+        });
+
         document.getElementById('rec-pts').textContent = targetData.length;
+
         trailPts.push({ x, y });
         if (trailPts.length > 400) trailPts.shift();
-        renderTrail();
+        renderTargetTrail();
     };
-    area.addEventListener('mousemove', targetMoveHandler);
 
+    area.addEventListener('mousemove', targetMoveHandler);
     spawnTarget();
 }
 
-function renderTrail() {
+function renderTargetTrail() {
     if (!tCtx || trailPts.length < 2) return;
     tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
-    tCtx.beginPath();
-    tCtx.moveTo(trailPts[0].x, trailPts[0].y);
     for (let i = 1; i < trailPts.length; i++) {
-        const alpha = (i / trailPts.length) * 0.4;
-        tCtx.strokeStyle = `rgba(0,212,170,${alpha})`;
+        const alpha = (i / trailPts.length) * 0.25;
+        tCtx.beginPath();
+        tCtx.strokeStyle = `rgba(0, 0, 0, ${alpha})`;
         tCtx.lineWidth = 1.5;
+        tCtx.moveTo(trailPts[i - 1].x, trailPts[i - 1].y);
         tCtx.lineTo(trailPts[i].x, trailPts[i].y);
         tCtx.stroke();
-        tCtx.beginPath();
-        tCtx.moveTo(trailPts[i].x, trailPts[i].y);
     }
 }
 
 function spawnTarget() {
     if (currentTargetEl) currentTargetEl.remove();
+
     const area = document.getElementById('target-area');
-    const size = 56;
-    const margin = 80;
-    const mw = area.offsetWidth - size - margin;
-    const mh = area.offsetHeight - size - margin;
-    const left = margin + Math.random() * mw;
-    const top = margin + Math.random() * mh;
-    const cx = left + size / 2;
-    const cy = top + size / 2;
+    const SIZE = 56;
+    const MARGIN = 80;
+    const maxX = area.offsetWidth  - SIZE - MARGIN;
+    const maxY = area.offsetHeight - SIZE - MARGIN;
+
+    const left = MARGIN + Math.random() * maxX;
+    const top  = MARGIN + Math.random() * maxY;
+    const cx   = left + SIZE / 2;
+    const cy   = top  + SIZE / 2;
 
     const div = document.createElement('div');
     div.className = 'target-circle';
-    div.style.cssText = `width:${size}px;height:${size}px;left:${left}px;top:${top}px;`;
+    div.style.cssText = `width:${SIZE}px;height:${SIZE}px;left:${left}px;top:${top}px;`;
 
-    const outer = document.createElement('div');
-    outer.className = 'target-outer';
-    const inner = document.createElement('div');
-    inner.className = 'target-inner';
-    div.appendChild(outer);
-    div.appendChild(inner);
+    const dot = document.createElement('div');
+    dot.className = 'target-center';
+    div.appendChild(dot);
 
     div.addEventListener('click', (e) => {
         const rect = area.getBoundingClientRect();
         const x = Math.round(e.clientX - rect.left);
         const y = Math.round(e.clientY - rect.top);
         const t = Math.round(performance.now() - taskStart);
-        targetData.push({ task: 'target', event: 'click', x, y, t, tid: targetsDone, tx: Math.round(cx), ty: Math.round(cy) });
+
+        targetData.push({
+            task: 'target', event: 'click',
+            x, y, t,
+            tid: targetsDone,
+            tx: Math.round(cx),
+            ty: Math.round(cy)
+        });
+
         targetsDone++;
         document.getElementById('remaining').textContent = TOTAL_TARGETS - targetsDone;
         document.getElementById('clicked').textContent = targetsDone;
+        document.getElementById('rec-pts').textContent = targetData.length;
 
         if (targetsDone >= TOTAL_TARGETS) {
             finishTargetTask(area);
@@ -160,7 +178,7 @@ function finishTargetTask(area) {
 }
 
 // ============================================================
-// PAGE 5: Free Movement Task
+// ページ5: 自由操作タスク
 // ============================================================
 let fCanvas, fCtx, fTrail = [];
 let fMoveHandler = null, fClickHandler = null, fTimer = null;
@@ -171,9 +189,8 @@ function startFreeTask() {
     fTrail = [];
 
     const area = document.getElementById('free-area');
-    area.classList.add('active');
     fCanvas = document.getElementById('free-canvas');
-    fCanvas.width = area.offsetWidth;
+    fCanvas.width  = area.offsetWidth;
     fCanvas.height = area.offsetHeight;
     fCtx = fCanvas.getContext('2d');
 
@@ -181,11 +198,17 @@ function startFreeTask() {
 
     fMoveHandler = (e) => {
         const rect = area.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const x = Math.round(e.clientX - rect.left);
+        const y = Math.round(e.clientY - rect.top);
         if (x < 0 || y < 0 || x > area.offsetWidth || y > area.offsetHeight) return;
         const t = Math.round(performance.now() - taskStart);
-        freeData.push({ task: 'free', event: 'move', x: Math.round(x), y: Math.round(y), t, tid: '', tx: '', ty: '' });
+
+        freeData.push({
+            task: 'free', event: 'move',
+            x, y, t,
+            tid: '', tx: '', ty: ''
+        });
+
         fTrail.push({ x, y });
         if (fTrail.length > 600) fTrail.shift();
         renderFreeTrail();
@@ -196,19 +219,25 @@ function startFreeTask() {
         const x = Math.round(e.clientX - rect.left);
         const y = Math.round(e.clientY - rect.top);
         const t = Math.round(performance.now() - taskStart);
-        freeData.push({ task: 'free', event: 'click', x, y, t, tid: '', tx: '', ty: '' });
+
+        freeData.push({
+            task: 'free', event: 'click',
+            x, y, t,
+            tid: '', tx: '', ty: ''
+        });
     };
 
     area.addEventListener('mousemove', fMoveHandler);
     area.addEventListener('click', fClickHandler);
 
     fTimer = setInterval(() => {
-        const elapsed = performance.now() - taskStart;
-        const remaining = Math.max(0, FREE_MS - elapsed);
-        const pct = (remaining / FREE_MS) * 100;
+        const elapsed   = performance.now() - taskStart;
+        const remaining = Math.max(0, FREE_DURATION_MS - elapsed);
+        const pct  = (remaining / FREE_DURATION_MS) * 100;
         const secs = Math.ceil(remaining / 1000);
-        document.getElementById('timer-fill').style.width = pct + '%';
-        document.getElementById('timer-text').textContent = secs + 's';
+
+        document.getElementById('timer-fill').style.width  = pct + '%';
+        document.getElementById('timer-text').textContent  = secs + 's';
         document.getElementById('big-countdown').textContent = secs;
 
         if (remaining <= 0) {
@@ -222,12 +251,12 @@ function renderFreeTrail() {
     if (!fCtx || fTrail.length < 2) return;
     fCtx.clearRect(0, 0, fCanvas.width, fCanvas.height);
     for (let i = 1; i < fTrail.length; i++) {
-        const alpha = (i / fTrail.length) * 0.45;
+        const alpha = (i / fTrail.length) * 0.3;
         fCtx.beginPath();
-        fCtx.strokeStyle = `rgba(0,212,170,${alpha})`;
+        fCtx.strokeStyle = `rgba(0, 0, 0, ${alpha})`;
         fCtx.lineWidth = 1.5;
         fCtx.moveTo(fTrail[i - 1].x, fTrail[i - 1].y);
-        fCtx.lineTo(fTrail[i].x, fTrail[i].y);
+        fCtx.lineTo(fTrail[i].x,     fTrail[i].y);
         fCtx.stroke();
     }
 }
@@ -235,43 +264,40 @@ function renderFreeTrail() {
 function finishFreeTask(area) {
     area.removeEventListener('mousemove', fMoveHandler);
     area.removeEventListener('click', fClickHandler);
-    area.classList.remove('active');
     allData = allData.concat(freeData);
     showComplete();
 }
 
 // ============================================================
-// PAGE 6: Complete
+// ページ6: 完了・CSV出力
 // ============================================================
 function showComplete() {
-    const totalClicks = targetData.filter(d => d.event === 'click').length;
-    document.getElementById('sum-pid').textContent = participantId;
-    document.getElementById('sum-sid').textContent = sessionId;
-    document.getElementById('sum-pts').textContent = allData.length.toLocaleString();
-    document.getElementById('sum-clicks').textContent = totalClicks;
+    const clicks = targetData.filter(d => d.event === 'click').length;
+    document.getElementById('sum-pid').textContent    = participantId;
+    document.getElementById('sum-sid').textContent    = sessionId;
+    document.getElementById('sum-pts').textContent    = allData.length.toLocaleString();
+    document.getElementById('sum-clicks').textContent = clicks;
     showPage('page-complete');
 }
 
 function downloadCSV() {
-    const headers = ['task', 'event', 'x', 'y', 't_ms', 'target_id', 'target_x', 'target_y', 'participant_id', 'session_id'];
+    const headers = ['task','event','x','y','t_ms','target_id','target_x','target_y','participant_id','session_id'];
+
     const rows = allData.map(d => [
-        d.task,
-        d.event,
-        d.x,
-        d.y,
-        d.t,
+        d.task, d.event, d.x, d.y, d.t,
         d.tid !== '' ? d.tid : '',
-        d.tx !== '' ? d.tx : '',
-        d.ty !== '' ? d.ty : '',
+        d.tx  !== '' ? d.tx  : '',
+        d.ty  !== '' ? d.ty  : '',
         participantId,
         sessionId
     ].join(','));
 
-    const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    // BOM付きUTF-8でExcelでも文字化けしない
+    const csv  = '\uFEFF' + [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
     a.download = `mouse_${participantId}_${sessionId}.csv`;
     document.body.appendChild(a);
     a.click();
